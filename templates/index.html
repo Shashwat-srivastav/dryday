@@ -1,0 +1,448 @@
+<!-- templates/index.html
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Beer Restock Planner</title>
+    <link href="https://fonts.googleapis.com/css2?family=Bungee&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <style>
+        body {
+            font-family: 'Bungee', cursive;
+            background: linear-gradient(to right, #8e2de2, #4a00e0);
+            color: white;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        section {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 20px;
+            margin: 20px auto;
+            border-radius: 10px;
+            max-width: 600px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+        }
+
+        input,
+        button,
+        select {
+            padding: 10px;
+            margin: 5px;
+            border-radius: 5px;
+            border: none;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        button {
+            background: #ff4081;
+            color: white;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        button:hover {
+            transform: scale(1.05);
+        }
+
+        #nextRestock {
+            font-size: 1.5em;
+            text-align: center;
+            padding: 15px;
+            margin: 20px 0;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            animation: pulse 2s infinite;
+        }
+
+        .calendar-container {
+            min-height: 400px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+            padding: 15px;
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.02);
+            }
+
+            100% {
+                transform: scale(1);
+            }
+        }
+
+        .flatpickr-calendar {
+            background: rgba(0, 0, 0, 0.7) !important;
+            color: white !important;
+            border: none !important;
+            width: 100% !important;
+            font-family: 'Bungee', cursive !important;
+        }
+
+        .flatpickr-day {
+            max-width: none !important;
+            height: 50px !important;
+            line-height: 50px !important;
+            font-size: 1.1em;
+        }
+
+        .flatpickr-day.dry-day {
+            background: #f44336 !important;
+            border-color: #f44336 !important;
+        }
+
+        .flatpickr-day.restock-day {
+            background: #4CAF50 !important;
+            border-color: #4CAF50 !important;
+        }
+
+        .flatpickr-day.today {
+            border-color: #ff4081 !important;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>🍺 Beer Restock Planner</h1>
+
+    <section>
+        <h2>Preferences</h2>
+        <form id="preferencesForm">
+            <select id="state">
+                <option value="Maharashtra">Maharashtra</option>
+                <option value="Delhi">Delhi</option>
+                <option value="Karnataka">Karnataka</option>
+            </select>
+            <input type="number" id="beerThreshold" placeholder="Minimum Stock" required>
+            <input type="number" id="consumptionRate" placeholder="Daily Consumption" required>
+            <button type="submit">Save Preferences</button>
+        </form>
+    </section>
+
+    <section>
+        <h2>Generate Plan</h2>
+        <button id="suggestionButton">Generate Restock Plan</button>
+        <div id="nextRestock"></div>
+        <div class="calendar-container">
+            <div id="calendar"></div>
+        </div>
+    </section>
+
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script>
+        let calendarInstance = null;
+
+        document.getElementById('preferencesForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const formData = {
+                beerThreshold: Number(document.getElementById('beerThreshold').value),
+                consumptionRate: Number(document.getElementById('consumptionRate').value),
+                state: document.getElementById('state').value
+            };
+
+            fetch('/api/preferences', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(formData)
+            }).then(() => alert('Preferences saved!'));
+        });
+
+        document.getElementById('suggestionButton').addEventListener('click', () => {
+            fetch('/api/suggestions')
+                .then(res => res.json())
+                .then(data => {
+                    // Update next restock display
+                    document.getElementById('nextRestock').innerHTML = `
+                        ⚠️ Next Restock By: <br>
+                        <span style="font-size:1.8em;color:#4CAF50;">${data.suggestion}</span>
+                    `;
+
+                    // Clear existing calendar
+                    if (calendarInstance) {
+                        calendarInstance.destroy();
+                        document.getElementById('calendar').innerHTML = '';
+                    }
+
+                    // Initialize new calendar
+                    calendarInstance = flatpickr("#calendar", {
+                        inline: true,
+                        dateFormat: "Y-m-d",
+                        defaultDate: new Date(),
+                        enable: [
+                            {
+                                from: new Date(),
+                                to: new Date().fp_incr(60)
+                            }
+                        ],
+                        onDayCreate: function (dObj, dStr, fp, dayElem) {
+                            const dateStr = dayElem.dateObj.toISOString().split('T')[0];
+                            dayElem.classList.remove('dry-day', 'restock-day');
+
+                            if (data.dryDays.includes(dateStr)) {
+                                dayElem.classList.add('dry-day');
+                            }
+                            if (data.restockDays.includes(dateStr)) {
+                                dayElem.classList.add('restock-day');
+                            }
+                        }
+                    });
+
+                    // Force calendar redraw
+                    setTimeout(() => {
+                        calendarInstance.redraw();
+                        document.querySelector('.flatpickr-calendar').style.opacity = '1';
+                    }, 10);
+                })
+                .catch(error => console.error('Error:', error));
+        });
+    </script>
+</body>
+
+</html> -->
+
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Beer Restock Planner</title>
+    <link href="https://fonts.googleapis.com/css2?family=Bungee&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <style>
+        /* Guaranteed visible calendar styles */
+        /* Calendar centering styles */
+    .calendar-container {
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+        margin: 20px auto;
+        min-height: 60px;
+        max-width: 600px;
+        display: flex;
+        justify-content: center;
+    }
+
+    #calendar {
+        width: 100%;
+        min-height: 60px !important;
+        background: white !important;
+        max-width: 600px;
+    }
+
+    .flatpickr-calendar {
+        width: 100% !important;
+        background: rgb(112, 204, 227) !important;
+        transform: none !important;
+        left: 0 !important;
+        margin: 0 auto !important;
+        position: relative !important;
+    }
+
+    .flatpickr-innerContainer {
+        width: 100% !important;
+        margin: 0 auto;
+    }
+
+    .flatpickr-days {
+        width: 100% !important;
+        margin: 0 auto;
+    }
+
+    .flatpickr-day {
+        margin: 2px auto !important;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* Keep existing other styles */
+    body {
+        font-family: 'Bungee', cursive;
+        background: linear-gradient(to right, #8e2de2, #4a00e0);
+        color: white;
+        padding: 20px;
+        min-height: 100vh;
+    }
+
+        #calendar {
+            width: 100% !important;
+            min-height: 0px !important;
+            background: rgb(243, 121, 121) !important;
+        }
+
+        .flatpickr-calendar {
+            width: 100% !important;
+            background: white !important;
+            transform: scale(1) !important;
+            opacity: 1 !important;
+            visibility: visible !important;
+        }
+
+        .flatpickr-day {
+            height: 60px !important;
+            line-height: 60px !important;
+            max-width: 14.28% !important;
+            margin: 2px !important;
+            border-radius: 8px !important;
+        }
+
+        .flatpickr-day.dry-day {
+            background: #f44336 !important;
+            border: 2px solid #f44336 !important;
+            color: white !important;
+        }
+
+        .flatpickr-day.restock-day {
+            background: #4CAF50 !important;
+            border: 2px solid #4CAF50 !important;
+            color: white !important;
+        }
+
+        /* Form styles */
+        .form-section {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        input,
+        button,
+        select {
+            padding: 12px;
+            margin: 8px 0;
+            width: 100%;
+            border-radius: 8px;
+            border: none;
+            font-size: 16px;
+        }
+
+        button {
+            background: #ff4081;
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        button:hover {
+            filter: brightness(1.1);
+            transform: translateY(-2px);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="form-section">
+        <h1>🍺 Beer Restock Planner</h1>
+
+        <h2>Preferences</h2>
+        <form id="preferencesForm">
+            <select id="state">
+                <option value="Maharashtra">Maharashtra</option>
+                <option value="Delhi">Delhi</option>
+                <option value="Karnataka">Karnataka</option>
+            </select>
+            <input type="number" id="beerThreshold" placeholder="Minimum Stock" required>
+            <input type="number" id="consumptionRate" placeholder="Daily Consumption" required>
+            <button type="submit">Save Preferences</button>
+        </form>
+
+        <h2>Generate Plan</h2>
+        <button id="suggestionButton">Generate Restock Plan</button>
+        <div id="nextRestock"></div>
+    </div>
+
+    <div class="calendar-container">
+        <div id="calendar"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script>
+        let calendarInstance = null;
+
+        // Initialize calendar with default data
+        function initializeCalendar(dryDays = [], restockDays = []) {
+            if (calendarInstance) calendarInstance.destroy();
+
+            calendarInstance = flatpickr("#calendar", {
+                inline: true,
+                static: true,
+                monthSelectorType: 'static',
+                dateFormat: "Y-m-d",
+                defaultDate: new Date(),
+                enable: [
+                    { from: new Date(), to: new Date().fp_incr(60) },
+                    ...dryDays,
+                    ...restockDays
+                ],
+                onDayCreate: function (_, __, ___, dayElem) {
+                    const dateStr = dayElem.dateObj.toISOString().split('T')[0];
+                    dayElem.classList.remove('dry-day', 'restock-day');
+
+                    if (dryDays.includes(dateStr)) {
+                        dayElem.classList.add('dry-day');
+                        dayElem.innerHTML += '🚫';
+                    }
+                    if (restockDays.includes(dateStr)) {
+                        dayElem.classList.add('restock-day');
+                        dayElem.innerHTML += '✅';
+                    }
+                },
+                onReady: function () {
+                    this.calendarContainer.style.width = '100%';
+                    this.calendarContainer.style.opacity = 1;
+                }
+            });
+        }
+
+        // Event listeners
+        document.getElementById('preferencesForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const formData = {
+                beerThreshold: Number(document.getElementById('beerThreshold').value),
+                consumptionRate: Number(document.getElementById('consumptionRate').value),
+                state: document.getElementById('state').value
+            };
+
+            fetch('/api/preferences', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(formData)
+            }).then(() => alert('Preferences saved!'));
+        });
+
+        document.getElementById('suggestionButton').addEventListener('click', () => {
+            fetch('/api/suggestions')
+                .then(res => res.json())
+                .then(data => {
+                    document.getElementById('nextRestock').innerHTML = `
+                        🚨 Next Restock By: 
+                        <span style="color: #4CAF50; font-size: 1.5em;">
+                            ${data.nextRestock}
+                        </span>
+                    `;
+                    initializeCalendar(data.dryDays, data.restockDays);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error loading data. Using demo dates.');
+
+                });
+        });
+
+        // Initial calendar load
+        initializeCalendar();
+    </script>
+</body>
+
+</html>
